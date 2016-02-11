@@ -9,61 +9,48 @@ module.exports = function (content) {
     this.emitError(target + ' not exist!');
     return;
   }
-
-
+​
+​
   var getJsonFromAmdFile = function(content){
       var sandbox = {
         json:'',
         module : {},
         exports : {}
       };
-
-      var mockDefine = function(id, dependencies, obj){
-        if(!obj){
-          if(!dependencies){
-            obj = id;
-          }else{
-            obj = dependencies;
-          }
-        }
-        this.json = obj;
-      };
-
-
+      
+      var _d = "function define(i, d, o) {if(!o) {if(!d) {return i;}return d;}return o;}"
+​
       var vm = require('vm');
       var context = vm.createContext(sandbox);
-      var script = new vm.Script('var define='+mockDefine.toString()+';var ret='+content + ';ret&&!json&&!module.exports&&(json=ret);');
+      var script = new vm.Script(_d+"\nvar ret="+content +";this._json = ret;");
       script.runInContext(context);
+      if(context._json && typeof context._json === 'object') {
+          return context._json;
+      }
       return sandbox.json || (sandbox.module && sandbox.module.exports);
   };
-
+​
   var json = getJsonFromAmdFile(content);
-
-  var ret = {};
-  var coffee;
-  var __content;
-
-  ret.__root = json.root;
+​
+  var ret = {},
+      __content;
+​
+  ret.__root = !json ? {root:true} : json.root;
   for(var language in json){
-    if(language === 'root') continue;
+    if(language === 'root' && typeof json[language] === 'object') {
+        continue;
+    }
     var targetFile = path.join(targetPath,language,targetFileName);
     if(!fs.existsSync(targetFile)){
         this.emitError(targetFile + 'not exist!');
         return;
     }
-
     __content = fs.readFileSync(targetFile,'utf8');
-
-    if (targetFile.match(/\.coffee$/)){
-        if(!coffee) coffee = require('coffee-script');
-        __content = coffee.compile(__content,{ bare: true });
-    }
-
     ret['__' + language] = getJsonFromAmdFile(__content);
   }
-
+​
   var retStr = 'var amdi18n=' + JSON.stringify(ret) + ';';
-
+​
   var init = function(language){
     if(!language){
         if(window._i18n && window._i18n.locale){
@@ -83,11 +70,11 @@ module.exports = function (content) {
         }
     }
   };
-
+​
   retStr += 'amdi18n.init=' + init.toString() + ';';
   retStr += 'amdi18n.init();';
   retStr += 'module.exports=amdi18n;';
-
+​
   this.cacheable && this.cacheable();
   this.value = content;
   return retStr;
